@@ -1,0 +1,29 @@
+FROM node:20-bullseye AS build
+
+WORKDIR /app
+
+# Add company CA
+COPY company-ca.crt /usr/local/share/ca-certificates/company-ca.crt
+RUN update-ca-certificates
+
+# Tell Node to trust the company CA
+ENV NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/company-ca.crt
+
+COPY package*.json ./
+RUN npm ci
+
+COPY . .
+RUN npm run build
+
+# --- Production stage ---
+FROM nginx:stable-bullseye
+
+# Copy built files from Nose to Nginx HTML directory
+COPY --from=build /app/dist /usr/share/nginx/html
+COPY public/env.template.js /usr/share/nginx/html/env.template.js
+
+# Replace variables at runtime
+CMD sh -c "envsubst < /usr/share/nginx/html/env.template.js > /usr/share/nginx/html/env.js && nginx -g 'daemon off;'"
+
+# Expose Nginx port
+EXPOSE 80
